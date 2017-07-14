@@ -104,14 +104,14 @@ def in400(uhol):
     return uhol
 
 
-def skupina_avg(skupina, cz, cs):
+def skupina_avg(skupina, stanovisko, cs):
     '''
     Funkcia na priemerovanie a redukovanie smerov v jednej skupine 
     
     INPUT
     skupina: list of tuples; [(ciel, Hz, vzd),...]
                 musi byt parny pocet tuples tj. merany kazdy bod v dvoch polohach
-    cz: int; poradove cislo zostavy od 0
+    stanovisko: str; nazov stanoviska
     cs: int; poradove cislo skupiny od 0
 
     OUTPUTS
@@ -130,9 +130,9 @@ def skupina_avg(skupina, cz, cs):
 
         if not name1 == name2:
             error_message = '''
-            'Vyskytol sa problem v skupine cislo {} pre stanovisko cislo {}. Priemerovana zamera 
+            'Vyskytol sa problem v skupine cislo {} pre stanovisko {}. Priemerovana zamera 
             v prvej a druhej polohe ma iny nazov bodu ({} a {}). Oprav manualne zapisnik!!!'     
-            '''.format(cs+1, cz+1, name1, name2)
+            '''.format(cs+1, stanovisko, name1, name2)
             raise ValueError(error_message)
 
         if i == last_idx:
@@ -214,7 +214,7 @@ def best_two(diffs):
     return best_groups_idx
 
 
-def adjust_zostava(zostava, cz):
+def adjust_zostava(zostava):
     '''
     Ziskanie priemernych smerov a dlzok z dvoch najpodobnejsich skupin (blizky Hz) pre jednu zostavu.
 
@@ -223,7 +223,6 @@ def adjust_zostava(zostava, cz):
                     priklad: {'meranie': [ ('O1', 200.0023, 4.109), ('S2', 319.5672, 2.559), ('S2', 119.5631, 2.559), ...], 
                             'bod_spat': 'O1', 'bod_vpred': 'S2', 'stanovisko': 'S1'};
                     tuples obsahuju 3 prvky -  (stanovisko, Hz uhol, vzdialenost)
-    cz: int from 0; poradove cislo stanoviska/zostavy
 
     OUTPUT
     zostava_output: dict; Vysledne priemerne smery na stanovisku
@@ -250,9 +249,9 @@ def adjust_zostava(zostava, cz):
             skupina_data = zostava['meranie'][start_idx:end_idx+1]
 
         if not len(skupina_data) % 2 == 0:
-            raise ValueError('Skupina cislo {} pre stanovisko cislo {} nema parny pocet zamer. Oprav manualne zapisnik!!!'.format(j+1, cz+1))
+            raise ValueError('Skupina cislo {} pre stanovisko {} nema parny pocet zamer. Oprav manualne zapisnik!!!'.format(j+1, stanovisko))
         # Spriemerovane dve polohy a redukcia orientacie v ramci jednej skupiny
-        AVG_in_group = skupina_avg(skupina_data, cz, j)
+        AVG_in_group = skupina_avg(skupina_data, stanovisko, j)
         # get all body stranou
         for zamera in AVG_in_group:
             if zamera[0] not in [bod_spat, bod_vpred]:
@@ -421,7 +420,9 @@ def check_names_bodvpred(zostavy):
             else:
                 error_message = '''
                 Nazov stanoviska {} sa nezhoduje s nazvom zamery vpred pri 
-                predchadzajucom stanovisku. Zmen zapisnik manualne!!!'''.format(stanovisko)
+                predchadzajucom stanovisku. Zmen zapisnik manualne!!!
+                Pravdepodobne su na konci poslednej skupiny predchadzajuceho 
+                stanoviska merane body stranou.'''.format(stanovisko)
                 raise ValueError(error_message)
 
 
@@ -447,7 +448,8 @@ def check_namse_stranou(zostavy):
             if not i_spat == (i_vpred+1):
                 error_message = '''
                 Pri zostave na stanovisku {} sa pravdepodobne vyskytuju body stranou merane na zaciatku alebo 
-                konci skupiny. Zmen zapisnik manualne, aby boli v strede skupiny!!!'''.format(stanovisko)
+                konci skupiny. Zmen zapisnik manualne, aby boli v strede skupiny!!!
+                Je taktiez mozne, ze sa v skupine nachadza bod vpred viackrat (chybne merany ako bod stranou)'''.format(stanovisko)
                 raise ValueError(error_message)
 
 
@@ -460,7 +462,7 @@ def compute_measurements(file, H, o, dist_reduce=True):
     '''
     file_base = os.path.basename(file)
     # without extension
-    file_name = os.path.splitext(file)[0]
+    file_name = os.path.splitext(file_base)[0]
 
     measures = get_measurements(file)
     measures = correct_first_stat(measures)
@@ -468,8 +470,8 @@ def compute_measurements(file, H, o, dist_reduce=True):
     check_namse_stranou(measures)
     # Priemerovanie zamer z dvoch najspolahlivejsich skupin.
     zostavy_AVGed = []
-    for cz, zostava in enumerate(measures):
-        zostava_AVGed = adjust_zostava(zostava, cz)
+    for zostava in measures:
+        zostava_AVGed = adjust_zostava(zostava)
         zostavy_AVGed.append(zostava_AVGed)
 
     if dist_reduce:
@@ -481,7 +483,7 @@ def compute_measurements(file, H, o, dist_reduce=True):
 
 
 if __name__ == '__main__':
-    compute_measurements(r'd:\Projects\POLYconverter\examples\example2.txt', 500, -3)
+    compute_measurements(r'd:\Projects\POLYconverter\examples\example.txt', 500, -3)
 
 
 
