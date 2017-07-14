@@ -6,7 +6,7 @@ def init_parser():
     parser.add_argument("input_file", help="Vstupny subor - zapisnik z merania", type=str)
     parser.add_argument("nadvys", help="Priblizna nadmorska vyska polygonoveho tahu [m]", type=float)
     parser.add_argument("opr100m", help="Oprava na 100m dlzky pri redukcii dlzok zo skreslenia pouzitej projekcie [mm] - odcitane z diagramu", type=float)
-    parser.add_argument("--nie_red_dlzok", help="Redukcia dlzok sa nebude uvazovat vo vysledku", action="store_true")
+    parser.add_argument("-nor","--nie_red_dlzok", help="Redukcia dlzok sa nebude uvazovat vo vysledku", action="store_true")
     args = parser.parse_args()
     return args
 
