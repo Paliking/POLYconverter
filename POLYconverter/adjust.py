@@ -37,6 +37,7 @@ def get_measurements(file):
 
     '''
     data_by_stanovisko = []
+    prve_stan = True
 
     with open(file) as obj:
         gen = get_blocks(obj)
@@ -50,6 +51,12 @@ def get_measurements(file):
                 stat_data = {}
                 stanovisko = block[1].split()[0]
                 stat_data['stanovisko'] = stanovisko
+                if prve_stan:
+                    vys_stroj = block[1].split()[3]
+                    prve_stan = False
+                else:
+                    vys_stroj = block[1].split()[5]
+                stat_data['vys_stroj'] = vys_stroj
 
                 spat_idx = block.index('Orientacie:')
                 bod_spat = block[spat_idx+1].split()[0]
@@ -65,12 +72,16 @@ def get_measurements(file):
                     splited_line = line.split()
                     ciel = splited_line[0]
                     Hz = float(splited_line[1])
+                    V = float(splited_line[2])
                     # prvemu stanovisku chyba prva merana dlzka (docasne bude -1)
+                    # a preto udaj o vyske zrkadla je na inom indexe
                     try:
                         vzd = float(splited_line[4])
+                        vyska_zrk = float(splited_line[5])
                     except:
                         vzd = -1
-                    meranie.append((ciel,Hz,vzd))
+                        vyska_zrk = float(splited_line[3])
+                    meranie.append((ciel,Hz,vzd, V, vyska_zrk))
 
                 stat_data['meranie'] = meranie
                 data_by_stanovisko.append(stat_data)
@@ -84,8 +95,8 @@ def correct_first_stat(measurements):
     z merania v druhej polohe.
     '''
     copied_distance = measurements[0]['meranie'][2][2]
-    target, Hz, _ = measurements[0]['meranie'][1]
-    new_entry = (target, Hz, copied_distance)
+    target, Hz, _, V, vys_zrk = measurements[0]['meranie'][1]
+    new_entry = (target, Hz, copied_distance, V, vys_zrk)
     correct_values = measurements[0]['meranie'][2:]
     corrected_measurement = [new_entry] + correct_values
     all_measures = measurements.copy()
@@ -119,15 +130,16 @@ def skupina_avg(skupina, stanovisko, cs):
                 [(ciel, Hz, vzd),...] spriemerovane smery z 2 poloh a 
                 zredukovane na nulovu orientaciu
     '''
-    smery = []
+    smery = [] # hz
     dlzky = []
     ciele = []
+    zenit_uhl = []
+    vysky_zrk = []
     last_idx = len(skupina) - 2
     # loop throught each target
     for i in range(0,len(skupina),2):
         name1 = skupina[i][0]
         name2 = skupina[i+1][0]
-
         if not name1 == name2:
             error_message = '''
             'Vyskytol sa problem v skupine cislo {} pre stanovisko {}. Priemerovana zamera 
@@ -138,18 +150,20 @@ def skupina_avg(skupina, stanovisko, cs):
         if i == last_idx:
             Hz_p2 = skupina[i][1]
             Hz_p1 = skupina[i+1][1]
+            V_p2 = skupina[i][3]
+            V_p1 = skupina[i+1][3]
         else:
             Hz_p1 = skupina[i][1]
             Hz_p2 = skupina[i+1][1]
-
-        Hz_p1 = in400(Hz_p1)
+            V_p1 = skupina[i][3]
+            V_p2 = skupina[i+1][3]
 
         dlzka1 =  skupina[i][2]
         dlzka2 =  skupina[i+1][2]
         dlzky.append(round((dlzka1 + dlzka2)/2,3))
-        # korigovana druha poloha
-        Hz_p2_cor = in400(Hz_p2 - 200)
 
+        Hz_p1 = in400(Hz_p1)
+        Hz_p2_cor = in400(Hz_p2 - 200)
         # osetrenie prechodu cez 0.0000
         if round(Hz_p1) == round(Hz_p2_cor):
             smer = (Hz_p1 + Hz_p2_cor)/2
@@ -157,14 +171,18 @@ def skupina_avg(skupina, stanovisko, cs):
             smer = (Hz_p1 + Hz_p2_cor + 400)/2
             smer = in400(smer)
 
+        zenit_uhl.append(round((400 + V_p1 - V_p2)/2, 4))
         smery.append(smer)
         ciele.append(skupina[i][0])
+
+        vys_zrk = skupina[i][4]
+        vysky_zrk.append(vys_zrk)
 
     # redukovane smery
     smery_red = [ round(in400(s-smery[0]),4) for s in smery ]
     measure_AVGed = []
     for i in range(int(len(skupina)/2)):
-        measure_AVGed.append((ciele[i], smery_red[i], dlzky[i]))
+        measure_AVGed.append((ciele[i], smery_red[i], dlzky[i], zenit_uhl[i], vysky_zrk[i]))
     
     return measure_AVGed
         
@@ -179,11 +197,14 @@ def AVG_tuples(*tuples):
     names = [ tup[0] for tup in tuples]
     Hz_sum = sum([ tup[1] for tup in tuples])
     vzd_sum = sum([ tup[2] for tup in tuples])
+    V_sum = sum([ tup[3] for tup in tuples])
+    vys_zrk = tuples[0][4]
     if len(set(names)) == 1:
         name = names[0]
         Hz = round((Hz_sum)/n_tuples, 4)
         vzd = round((vzd_sum)/n_tuples, 3)
-        tuple_AVG = (name, Hz, vzd)
+        V = round((V_sum)/n_tuples, 4)
+        tuple_AVG = (name, Hz, vzd, V, vys_zrk)
     else:
         raise ValueError('Rozne body sa nesmu priemerovat!!!')
     return tuple_AVG
@@ -235,6 +256,7 @@ def adjust_zostava(zostava):
     stanovisko = zostava['stanovisko']
     bod_spat = zostava['bod_spat']
     bod_vpred = zostava['bod_vpred']
+    vys_stroj = zostava['vys_stroj']
     # indices of bod_vpred's measurements
     vpred_idxs = [i for i, mer in enumerate(zostava['meranie']) if mer[0]==bod_vpred ]
     # koncove indexy kazdej skupiny (skupina konci druhym meranim bodu vpred)
@@ -284,7 +306,7 @@ def adjust_zostava(zostava):
         AVGed_two_groupes_vpred = AVGs_in_groups[0][-1]
         AVGed_two_groupes_vzad = AVGs_in_groups[0][0]
 
-    zostava_output['stanovisko'] = {'name': stanovisko}
+    zostava_output['stanovisko'] = {'name': stanovisko, 'vys_stroj': vys_stroj}
     zostava_output['bod_vpred'] = {'name': bod_vpred, 'data': AVGed_two_groupes_vpred}
     zostava_output['bod_spat'] = {'name': bod_spat, 'data': AVGed_two_groupes_vzad}
     body_stranou = [ point for point, *_ in zamery_stranou]
@@ -362,20 +384,20 @@ def make_reductions(zostavy, H, o):
     '''
     zostavy_all = zostavy.copy()
     for i, zostava in enumerate(zostavy):
-        bod_vp, hz_vp, s_vp = zostava['bod_vpred']['data']
+        bod_vp, hz_vp, s_vp, V_vp, vys_zrk_vp = zostava['bod_vpred']['data']
         K = red_dlzok(s_vp, H, o)
-        zostavy_all[i]['bod_vpred']['data'] = (bod_vp, hz_vp, round(s_vp+K, 3))
+        zostavy_all[i]['bod_vpred']['data'] = (bod_vp, hz_vp, round(s_vp+K, 3), V_vp, vys_zrk_vp)
 
-        bod_vz, hz_vz, s_vz = zostava['bod_spat']['data']
+        bod_vz, hz_vz, s_vz, V_vz, vys_zrk_vz = zostava['bod_spat']['data']
         K = red_dlzok(s_vz, H, o)
-        zostavy_all[i]['bod_spat']['data'] = (bod_vz, hz_vz, round(s_vz+K, 3))
+        zostavy_all[i]['bod_spat']['data'] = (bod_vz, hz_vz, round(s_vz+K, 3), V_vz, vys_zrk_vz)
         data_stranou = zostava['stranou']['data']
         if len(data_stranou) > 0:
             data_stranou_corr = []
             for zamera in data_stranou:
-                bod, hz, s = zamera
+                bod, hz, s, V, vys_zrk = zamera
                 K = red_dlzok(s, H, o)
-                data_stranou_corr.append((bod, hz, round(s+K, 3)))
+                data_stranou_corr.append((bod, hz, round(s+K, 3), V, vys_zrk))
             zostavy_all[i]['stranou']['data'] = data_stranou_corr
 
     return zostavy_all
@@ -426,7 +448,7 @@ def check_names_bodvpred(zostavy):
                 raise ValueError(error_message)
 
 
-def check_namse_stranou(zostavy):
+def check_names_stranou(zostavy):
     '''
     Kontrola, ci sa body stranou nenachadzaju na zaciatku alebo na konci meranej skupiny.
     Ci sa nachadzaju na konci celej zostavy riesi funkcia check_names_bodvpred (okrem poslednej zostavy, 
@@ -467,7 +489,7 @@ def compute_measurements(file, H, o, dist_reduce=True):
     measures = get_measurements(file)
     measures = correct_first_stat(measures)
     check_names_bodvpred(measures)
-    check_namse_stranou(measures)
+    check_names_stranou(measures)
     # Priemerovanie zamer z dvoch najspolahlivejsich skupin.
     zostavy_AVGed = []
     for zostava in measures:
@@ -483,7 +505,7 @@ def compute_measurements(file, H, o, dist_reduce=True):
 
 
 if __name__ == '__main__':
-    compute_measurements(r'd:\Projects\POLYconverter\examples\example.txt', 500, -3)
+    compute_measurements(r'..\examples\example.txt', 500, -3)
 
 
 
