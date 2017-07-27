@@ -1,7 +1,7 @@
 # Pavol Ceizel 20.6.2017
 import csv
 import os
-
+import math
 
 def get_blocks(seq):
     '''
@@ -52,10 +52,10 @@ def get_measurements(file):
                 stanovisko = block[1].split()[0]
                 stat_data['stanovisko'] = stanovisko
                 if prve_stan:
-                    vys_stroj = block[1].split()[3]
+                    vys_stroj = float(block[1].split()[3])
                     prve_stan = False
                 else:
-                    vys_stroj = block[1].split()[5]
+                    vys_stroj = float(block[1].split()[5])
                 stat_data['vys_stroj'] = vys_stroj
 
                 spat_idx = block.index('Orientacie:')
@@ -411,7 +411,7 @@ def write_body_stranou(file, zostavy):
         datwriter = csv.writer(obj, delimiter=' ',
                                 quoting=csv.QUOTE_MINIMAL)
         datwriter.writerow(['Uhly pre body stranou'])
-        datwriter.writerow(['uhol_name', 'Hz(g)', 'vzd(m)'])
+        datwriter.writerow(['vzad_stan_ciel', 'Hz(g)', 'vzd(m)'])
         for zost in zostavy:
             bod_vzad = zost['bod_spat']['name']
             stanovisko = zost['stanovisko']['name']
@@ -475,6 +475,103 @@ def check_names_stranou(zostavy):
                 raise ValueError(error_message)
 
 
+def elev_2points(ha, hb, alfa, s, mode='grad'):
+    '''
+    Vypocet prevysenia medzi bodmi AB: dH_ab = H_b - H_a
+
+    ha - vyska stroja na bode A
+    hb - vyska zrkadla na bode B
+    alfa - vyskovy uhol na stanovisku A
+    s - vodorovna dlzka A-B
+    mode - str; 'deg', 'rad', 'grad'; jednotky vstupneho uhlu alfa
+    '''
+    if mode == 'deg':
+        angle = math.radians(alfa)
+    elif mode == 'rad':
+        angle = alfa
+    elif mode == 'grad':
+        angle = alfa/400*2*math.pi
+    else:
+        raise ValueError('Uhlova jednotka {} je neznama'.format(mode))
+    dH_ab = ha + math.tan(angle) * s - hb
+    return dH_ab
+
+
+def calc_elevations(zostavy_AVGed):
+    '''
+    Vypocet prevyseni stanovisko-ciel a ich pridanie do vstupneho dict.
+    '''
+    zostavy_new = zostavy_AVGed.copy()
+    for i, zostava in enumerate(zostavy_AVGed):
+        name_stroj = zostava['stanovisko']['name']
+        name_ciel = zostava['bod_vpred']['name']
+        h_stroj = zostava['stanovisko']['vys_stroj']
+        vzd_vodor = zostava['bod_vpred']['data'][2]
+        h_zrk = zostava['bod_vpred']['data'][4]
+        zenit_zrk = zostava['bod_vpred']['data'][3]
+        vysk_uhol = 100 - zenit_zrk
+        elev = elev_2points(h_stroj, h_zrk, vysk_uhol, vzd_vodor, mode='grad')
+        zostavy_new[i]['bod_vpred']['prevysenie'] = round(elev,3)
+        elevations_str = []
+        for zamera in zostava['stranou']['data']:
+            h_zrk_str = zamera[4]
+            vysk_uhol_str = 100 - zamera[3]
+            vzd_vodor_str = zamera[2]
+            elev_str = elev_2points(h_stroj, h_zrk_str, vysk_uhol_str, vzd_vodor_str, mode='grad')
+            elevations_str.append(round(elev_str,3))
+        zostavy_new[i]['stranou']['prevysenie'] = elevations_str
+    return zostavy_new
+
+
+def elevs2hight(elevations, H1):
+    '''
+    Vypocet vysok stanovisk polygonoveho tahu
+    elevations: list s prevyseniami
+    H1: float; vyska prveho stanoviska
+    '''
+    hights = []
+    vyska = H1
+    for elevation in elevations:
+        vyska = vyska + elevation
+        hights.append(round(vyska,3))
+    return hights
+
+
+def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
+    # prevysenia a vysky pre vsetky body_vpred okrem posledneho t.j. poslednej orientacie.
+    elevs = [ i['bod_vpred']['prevysenie'] for i in zostavy_AVGed[:-1] ]
+    hights = elevs2hight(elevs, H1)
+    print('vysky povodne', hights)
+    if H2 is not None:
+        # rozdiel vysok na poslednom stanovisku (znama - vypocitana)
+        rozdiel = H2 - hights[-1]
+        print('rozdiel vysky na poslednom stanovisku znama-vypocitana: ', rozdiel)
+    if oprav_vysky and H2 is None:
+        raise ValueError('Nieje mozne opravit vysky stanovisk, ked nebola zadana vyska posledneho stanoviska')
+
+    if oprav_vysky:
+        oprava = rozdiel/len(elevs)
+        elevs_corrected = [ e+oprava for e in elevs]
+        hights = elevs2hight(elevs_corrected, H1)
+        print('vysky opravene', hights)
+
+    # zapis vysok stanovisk a bodov stranou
+    zostavy_new = zostavy_AVGed.copy()
+    for i, zostava in enumerate(zostavy_AVGed):
+        if i == 0:
+            H_stan = H1
+        else:
+            H_stan = hights[i-1]
+        zostavy_new[i]['stanovisko']['vyska'] = H_stan
+        # urcenie vysok bodov stranou
+        vyska_str = []
+        for prev in zostava['stranou']['prevysenie']:
+            H_str = round(H_stan + prev, 3)
+            vyska_str.append(H_str)
+        zostavy_new[i]['stranou']['vyska'] = vyska_str
+    return zostavy_new
+
+
 def compute_measurements(file, H, o, dist_reduce=True):
     '''
     file: str; zapisnik z merania (.txt)
@@ -483,9 +580,7 @@ def compute_measurements(file, H, o, dist_reduce=True):
     dist_reduce: bool; opravit dlzky o redukcie
     '''
     file_base = os.path.basename(file)
-    # without extension
-    file_name = os.path.splitext(file_base)[0]
-
+    file_name = os.path.splitext(file_base)[0] # no ext.
     measures = get_measurements(file)
     measures = correct_first_stat(measures)
     check_names_bodvpred(measures)
@@ -495,10 +590,13 @@ def compute_measurements(file, H, o, dist_reduce=True):
     for zostava in measures:
         zostava_AVGed = adjust_zostava(zostava)
         zostavy_AVGed.append(zostava_AVGed)
-
+    # redukcie dlzok
     if dist_reduce:
         zostavy_AVGed = make_reductions(zostavy_AVGed, H, o)
-
+    # vypocet vysok
+    zostavy_AVGed = calc_elevations(zostavy_AVGed)
+    zostavy_AVGed = calc_hights(zostavy_AVGed, 100, H2=200, oprav_vysky=True)
+    # write outputs
     write_plx(file_name+'.plx', zostavy_AVGed)
     write_body_stranou(file_name+'_stranou.csv', zostavy_AVGed)
 
@@ -506,12 +604,3 @@ def compute_measurements(file, H, o, dist_reduce=True):
 
 if __name__ == '__main__':
     compute_measurements(r'..\examples\example.txt', 500, -3)
-
-
-
-
-
-
-
-
-
