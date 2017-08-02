@@ -52,11 +52,11 @@ def get_measurements(file):
                 stanovisko = block[1].split()[0]
                 stat_data['stanovisko'] = stanovisko
                 if prve_stan:
-                    vys_stroj = float(block[1].split()[3])
+                    vys_stroj = float(block[1].split()[4])
                     prve_stan = False
                 else:
-                    vys_stroj = float(block[1].split()[5])
-                stat_data['vys_stroj'] = vys_stroj
+                    vys_stroj = float(block[1].split()[6])
+                stat_data['vys_stroj'] = round(vys_stroj, 3)
 
                 spat_idx = block.index('Orientacie:')
                 bod_spat = block[spat_idx+1].split()[0]
@@ -399,7 +399,6 @@ def make_reductions(zostavy, H, o):
                 K = red_dlzok(s, H, o)
                 data_stranou_corr.append((bod, hz, round(s+K, 3), V, vys_zrk))
             zostavy_all[i]['stranou']['data'] = data_stranou_corr
-
     return zostavy_all
 
 
@@ -408,10 +407,11 @@ def write_body_stranou(file, zostavy):
     Do osobitneho suboru zapise spriemerovane uhly a dlzky pre body stranou
     '''
     with open(file, 'w', newline='') as obj:
-        datwriter = csv.writer(obj, delimiter=' ',
+        obj.write('Data pre body stranou\n')
+        datwriter = csv.writer(obj, delimiter=',',
                                 quoting=csv.QUOTE_MINIMAL)
-        datwriter.writerow(['Uhly pre body stranou'])
-        datwriter.writerow(['vzad_stan_ciel', 'Hz(g)', 'vzd(m)'])
+        datwriter.writerow(['---------------------'])
+        datwriter.writerow(['vzad_stan_ciel', 'Hz(g)', 'vzd(m)', 'zenit(g)'])
         for zost in zostavy:
             bod_vzad = zost['bod_spat']['name']
             stanovisko = zost['stanovisko']['name']
@@ -419,8 +419,9 @@ def write_body_stranou(file, zostavy):
                 bod_stranou = zam_stran[0]
                 Hz_stranou = zam_stran[1]
                 vzd_stranou = zam_stran[2]
+                zenit_ang = zam_stran[3]
                 angle_mark = '{}-{}-{}'.format(bod_vzad, stanovisko, bod_stranou)
-                datwriter.writerow([angle_mark, Hz_stranou, vzd_stranou])
+                datwriter.writerow([angle_mark, Hz_stranou, vzd_stranou, zenit_ang])
 
 
 def check_names_bodvpred(zostavy):
@@ -541,11 +542,10 @@ def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
     # prevysenia a vysky pre vsetky body_vpred okrem posledneho t.j. poslednej orientacie.
     elevs = [ i['bod_vpred']['prevysenie'] for i in zostavy_AVGed[:-1] ]
     hights = elevs2hight(elevs, H1)
-    print('vysky povodne', hights)
+    rozdiel = None
     if H2 is not None:
         # rozdiel vysok na poslednom stanovisku (znama - vypocitana)
         rozdiel = H2 - hights[-1]
-        print('rozdiel vysky na poslednom stanovisku znama-vypocitana: ', rozdiel)
     if oprav_vysky and H2 is None:
         raise ValueError('Nieje mozne opravit vysky stanovisk, ked nebola zadana vyska posledneho stanoviska')
 
@@ -553,7 +553,6 @@ def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
         oprava = rozdiel/len(elevs)
         elevs_corrected = [ e+oprava for e in elevs]
         hights = elevs2hight(elevs_corrected, H1)
-        print('vysky opravene', hights)
 
     # zapis vysok stanovisk a bodov stranou
     zostavy_new = zostavy_AVGed.copy()
@@ -569,10 +568,35 @@ def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
             H_str = round(H_stan + prev, 3)
             vyska_str.append(H_str)
         zostavy_new[i]['stranou']['vyska'] = vyska_str
-    return zostavy_new
+    return zostavy_new, round(rozdiel, 3)
 
 
-def compute_measurements(file, H, o, dist_reduce=True):
+def write_hights(file, zostavy, H_error, hights_fixed):
+    '''
+    H_error: None or float; rozdiel vypocitanej a znamej vysky na poslednom stanovisku.
+    hights_fixed: bool; boli/neboli opravene vysky na stanoviskach polygonu
+    '''        
+    with open(file, 'w', newline='') as obj:
+        if H_error is not None:
+            obj.write('Rozdiel vypocitanej a znamej vysky na poslednom stanovisku je: {}m\n'.format(H_error))
+        if hights_fixed:
+            obj.write('Vysky bodov polygonu BOLI opravene o tento rozdiel. \n')
+        else:
+            obj.write('Vysky bodov polygonu NEBOLI opravene o rozdiel vysok na poslednom stanovisku. \n')
+        obj.write('--------------------\n')
+        datwriter = csv.writer(obj, delimiter=',',
+                                quoting=csv.QUOTE_MINIMAL)
+        datwriter.writerow(['bod', 'H'])
+        for zost in zostavy:
+            stanovisko = zost['stanovisko']['name']
+            stan_hight = zost['stanovisko']['vyska']
+            datwriter.writerow([stanovisko, stan_hight])
+            for bod_stran, H_stran in zip(zost['stranou']['name'], zost['stranou']['vyska']):
+                datwriter.writerow([bod_stran, H_stran])
+
+
+def compute_measurements(file, H, o, dist_reduce=True, comp_hights=True, H1=None, H2=None,
+                        oprav_vysky=True):
     '''
     file: str; zapisnik z merania (.txt)
     H: float; priblizna nadmorska vyska polygonoveho tahu.
@@ -594,13 +618,15 @@ def compute_measurements(file, H, o, dist_reduce=True):
     if dist_reduce:
         zostavy_AVGed = make_reductions(zostavy_AVGed, H, o)
     # vypocet vysok
-    zostavy_AVGed = calc_elevations(zostavy_AVGed)
-    zostavy_AVGed = calc_hights(zostavy_AVGed, 100, H2=200, oprav_vysky=True)
-    # write outputs
+    if comp_hights:
+        zostavy_AVGed = calc_elevations(zostavy_AVGed)
+        zostavy_AVGed, H_error = calc_hights(zostavy_AVGed, H1, H2=H2, oprav_vysky=oprav_vysky)
+        write_hights(file_name+'_vysky.csv', zostavy_AVGed, H_error=H_error, hights_fixed=oprav_vysky)
+    # write plx and body_stranou
     write_plx(file_name+'.plx', zostavy_AVGed)
     write_body_stranou(file_name+'_stranou.csv', zostavy_AVGed)
 
 
 
 if __name__ == '__main__':
-    compute_measurements(r'..\examples\example.txt', 500, -3)
+    compute_measurements(r'..\examples\POL_701.txt', 348, -8, H1=348.96, H2=327.80)
