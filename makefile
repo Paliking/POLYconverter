@@ -5,6 +5,8 @@ make_exe:
 	COPY examples\* "dist\examples\"
 	MOVE "dist\examples\spusti.bat" "dist\spusti.bat"
 	RENAME "dist" "Polyconverter_v1.x"
+	DEL "POLYconverter.spec"
+	RMDIR "build" /S /Q
 
 grip:
 	C:\Python34\Scripts\grip -b
