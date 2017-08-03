@@ -545,7 +545,7 @@ def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
     rozdiel = None
     if H2 is not None:
         # rozdiel vysok na poslednom stanovisku (znama - vypocitana)
-        rozdiel = H2 - hights[-1]
+        rozdiel = round(H2 - hights[-1], 3)
     if oprav_vysky and H2 is None:
         raise ValueError('Nieje mozne opravit vysky stanovisk, ked nebola zadana vyska posledneho stanoviska')
 
@@ -568,7 +568,7 @@ def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
             H_str = round(H_stan + prev, 3)
             vyska_str.append(H_str)
         zostavy_new[i]['stranou']['vyska'] = vyska_str
-    return zostavy_new, round(rozdiel, 3)
+    return zostavy_new, rozdiel
 
 
 def write_hights(file, zostavy, H_error, hights_fixed):
@@ -629,4 +629,4 @@ def compute_measurements(file, H, o, dist_reduce=True, comp_hights=True, H1=None
 
 
 if __name__ == '__main__':
-    compute_measurements(r'..\examples\POL_701.txt', 348, -8, H1=348.96, H2=327.80)
+    compute_measurements(r'..\examples\example.txt', 348, -8, H1=348.96, H2=None)
