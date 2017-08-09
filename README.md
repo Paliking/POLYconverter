@@ -78,3 +78,6 @@ Po pridani prikazu -H1 100, reprezentujuci vysku 100m na prvom stanovisku polygn
 ```
 > POLYconverter.exe examples/example.txt 500 -3 -H1 100
 ```
+
+### Download last version of POLYconverter.exe
+https://github.com/Paliking/POLYconverter/releases
