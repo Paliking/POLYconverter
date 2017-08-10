@@ -314,7 +314,7 @@ def adjust_zostava(zostava):
     return zostava_output
 
 
-def write_plx(file, zostavy):
+def write_plx(file, zostavy, vysk_uhly=False):
     '''
     Ulozi data do plx subor, co je vstupny format pre vypocet polygonu pre kokes.
 
@@ -324,13 +324,19 @@ def write_plx(file, zostavy):
             example: {'stanovisko': {'name': 'S3'}, 'stranou': {'name': [], 'data': []}, 
                     'bod_spat': {'name': 'S2', 'data': ('S2', 0.0, 2.885)}, 
                     'bod_vpred': {'name': 'O2', 'data': ('O2', 395.86, 4.457)}}
+    vysk_uhly: bool; Ak True, tak je pridany dalsi stlpec s vyskovymi uhlami a
+                zmeni sa hlavicka suboru plx. Vyuziva sa to pri vyskovom rieseni  
+                polygonu v Kokesi.
     '''
     # write to file
     with open(file, 'w', newline='') as plxfile:
         plxriter = csv.writer(plxfile, delimiter=' ',
                                 quoting=csv.QUOTE_MINIMAL)
         # first two rows
-        plxriter.writerow(['//', 'vysky=0', 'delky=0', 'zenit=-1', 'cnt_poc=1', 'cnt_kon=1'])
+        if vysk_uhly:
+            plxriter.writerow(['//', 'vysky=1', 'delky=0', 'zenit=-1', 'cnt_poc=1', 'cnt_kon=1'])
+        else:
+            plxriter.writerow(['//', 'vysky=0', 'delky=0', 'zenit=-1', 'cnt_poc=1', 'cnt_kon=1'])
         orientacia1 = zostavy[0]['bod_spat']['name']
         stanovisko1 = zostavy[0]['stanovisko']['name']
         plxriter.writerow(['smernik {}-{}'.format(stanovisko1, orientacia1)])
@@ -344,7 +350,12 @@ def write_plx(file, zostavy):
             # vzdialenost spat z dalsieho stanoviska (ta ista vzdialenost)
             next_vzd_spat = zostavy[i+1]['bod_spat']['data'][2]
             AVG_vzd = round((vzd_vpred + next_vzd_spat) / 2, 3)
-            plxriter.writerow([stanovisko, Hz_vpred, AVG_vzd])
+            if not vysk_uhly:
+                plxriter.writerow([stanovisko, Hz_vpred, AVG_vzd])
+            else:
+                v_uhol_vpred = round(100 - zost['bod_vpred']['data'][3], 4)
+                plxriter.writerow([stanovisko, Hz_vpred, AVG_vzd, v_uhol_vpred])
+
         # posledne stanovisko
         orientacia_last = zostavy[-1]['bod_vpred']['name']
         stanovisko_last = zostavy[-1]['stanovisko']['name']
@@ -539,6 +550,13 @@ def elevs2hight(elevations, H1):
 
 
 def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
+    '''
+    Vypocet vysok bodov polygonu a bodov stranou.
+
+    OUTPUTS
+    zostavy_new: rovnaky tvar ako zostavy_AVGed, ale doplneny o vysky bodov
+    rozdiel: rozdiel vysky na poslednom stanovisku polygonu (znama - vypocitana) [m]
+    '''
     # prevysenia a vysky pre vsetky body_vpred okrem posledneho t.j. poslednej orientacie.
     elevs = [ i['bod_vpred']['prevysenie'] for i in zostavy_AVGed[:-1] ]
     hights = elevs2hight(elevs, H1)
@@ -575,7 +593,7 @@ def write_hights(file, zostavy, H_error, hights_fixed):
     '''
     H_error: None or float; rozdiel vypocitanej a znamej vysky na poslednom stanovisku.
     hights_fixed: bool; boli/neboli opravene vysky na stanoviskach polygonu
-    '''        
+    '''     
     with open(file, 'w', newline='') as obj:
         if H_error is not None:
             obj.write('Rozdiel vypocitanej a znamej vysky na poslednom stanovisku je: {}m\n'.format(H_error))
@@ -596,12 +614,20 @@ def write_hights(file, zostavy, H_error, hights_fixed):
 
 
 def compute_measurements(file, H, o, dist_reduce=True, comp_hights=True, H1=None, H2=None,
-                        oprav_vysky=True):
+                        oprav_vysky=True, plx_vysuhl=False):
     '''
     file: str; zapisnik z merania (.txt)
-    H: float; priblizna nadmorska vyska polygonoveho tahu.
+    H: float; priblizna nadmorska vyska polygonoveho tahu (kvoli redukcii dlzok).
     o: float; oprava pre 100m dlzky odcitana z diagramu dlzkovych oprav (mm)
     dist_reduce: bool; opravit dlzky o redukcie
+    comp_hights: bool; Vypocet prevyseni a vysok bodov.
+    H1: None or flaot; Presna vyska prveho stanoviska polygonoveho tahu ak ide o vyskove riesenie.
+    H2: None or flaot; Presna vyska posledneho stanoviska polygonoveho tahu ak ide o vyskove riesenie.
+    oprav_vysky: bool; Ak True a ked je definovana H1 aj H2, tak sa rozdiel vysky na poslednom stanovisku 
+                    (definovana - vypocitana) rovnomerne rozdeli na vsetky stanoviska polygonu.
+    plx_vysuhl: bool; Ak True, tak subor plx bude obsahovat aj vyskove uhly, potrebne na vyskove spracovanie
+                    polygonu v Kokesi. Zmenena je aj hlavicka suboru plx oproti polohovemu rieseniu.
+
     '''
     file_base = os.path.basename(file)
     file_name = os.path.splitext(file_base)[0] # no ext.
@@ -623,10 +649,10 @@ def compute_measurements(file, H, o, dist_reduce=True, comp_hights=True, H1=None
         zostavy_AVGed, H_error = calc_hights(zostavy_AVGed, H1, H2=H2, oprav_vysky=oprav_vysky)
         write_hights(file_name+'_vysky.csv', zostavy_AVGed, H_error=H_error, hights_fixed=oprav_vysky)
     # write plx and body_stranou
-    write_plx(file_name+'.plx', zostavy_AVGed)
+    write_plx(file_name+'.plx', zostavy_AVGed, vysk_uhly=plx_vysuhl)
     write_body_stranou(file_name+'_stranou.csv', zostavy_AVGed)
 
 
 
 if __name__ == '__main__':
-    compute_measurements(r'..\examples\example.txt', 348, -8, H1=348.96, H2=None)
+    compute_measurements(r'..\examples\example.txt', 348, -8, H1=348.96, H2=400)

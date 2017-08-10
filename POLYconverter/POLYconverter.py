@@ -9,6 +9,7 @@ def init_parser():
     parser.add_argument("-nor","--nie_red_dlzok", help="Redukcia dlzok sa nebude uvazovat vo vysledku", action="store_true")
     parser.add_argument("-H1","--H_first", help="Nadmorska vyska prveho stanoviska [m]", default=None, type=float)
     parser.add_argument("-H2","--H_last", help="Nadmorska vyska posledneho stanoviska [m]", default=None, type=float)
+    parser.add_argument("-plxv","--plx_vysuhl", help="*.plx subor bude v tvare potrebnom na vyskove riesenie polygonu v Kokesi", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -33,4 +34,4 @@ if __name__ == "__main__":
         comp_hights = False
 
     adjust.compute_measurements(args.input_file, args.nadvys, args.opr100m, dist_reduce=dist_reduce, comp_hights=comp_hights, 
-                                H1=args.H_first, H2=args.H_last, oprav_vysky=oprav_vysky)
+                                H1=args.H_first, H2=args.H_last, oprav_vysky=oprav_vysky, plx_vysuhl=args.plx_vysuhl)

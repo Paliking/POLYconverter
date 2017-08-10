@@ -35,6 +35,8 @@ optional arguments:
                         Nadmorska vyska prveho stanoviska [m]
   -H2, --H_last
                         Nadmorska vyska posledneho stanoviska [m]
+  -plxv, --plx_vysuhl   *.plx subor bude v tvare potrebnom na vyskove riesenie
+                        polygonu v Kokesi
 ```
 
 ### Priklad1 (polohove riesenie s redukciou dlzok)
@@ -77,6 +79,13 @@ Vypocet vysok meranych bodov pri znamej vyske iba prveho stanoviska (napr. rajon
 Po pridani prikazu -H1 100, reprezentujuci vysku 100m na prvom stanovisku polygnoveho tahu.
 ```
 > POLYconverter.exe examples/example.txt 500 -3 -H1 100
+```
+
+### Priklad5 (vyskove riesenie v Kokesi)
+Po pridani prikazu --plx_vysuhl budu do suboru example.plx pridane vyskove uhly, potrebne na vyskove
+spracovanie polygonoveho tahu v Kokesi. Hlavicka suboru bude tiez zmenena.
+```
+> POLYconverter.exe examples/example.txt 500 -3 --plx_vysuhl
 ```
 
 ### Download last version of POLYconverter.exe
