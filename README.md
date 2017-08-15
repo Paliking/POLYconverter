@@ -16,7 +16,8 @@ Konvertor zapisnika z merania polygonoveho tahu na format .plx pre spracovanie v
 ### Options
 ```
 > POLYconverter.exe -h
-usage: POLYconverter.exe [-h] [-nor] input_file nadvys opr100m
+usage: POLYconverter.exe [-h] [-nor] [-H1 H_FIRST] [-H2 H_LAST] [-plxv]
+                         input_file nadvys opr100m
 
 Spracovnie zapisnika z merania polygonoveho tahu a priprava vstupu pre program
 Kokes v tvare *.plx
