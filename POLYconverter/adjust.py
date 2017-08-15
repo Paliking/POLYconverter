@@ -1,7 +1,7 @@
 # Pavol Ceizel 20.6.2017
 import csv
 import os
-
+import math
 
 def get_blocks(seq):
     '''
@@ -37,6 +37,7 @@ def get_measurements(file):
 
     '''
     data_by_stanovisko = []
+    prve_stan = True
 
     with open(file) as obj:
         gen = get_blocks(obj)
@@ -50,6 +51,12 @@ def get_measurements(file):
                 stat_data = {}
                 stanovisko = block[1].split()[0]
                 stat_data['stanovisko'] = stanovisko
+                if prve_stan:
+                    vys_stroj = float(block[1].split()[4])
+                    prve_stan = False
+                else:
+                    vys_stroj = float(block[1].split()[6])
+                stat_data['vys_stroj'] = round(vys_stroj, 3)
 
                 spat_idx = block.index('Orientacie:')
                 bod_spat = block[spat_idx+1].split()[0]
@@ -65,12 +72,16 @@ def get_measurements(file):
                     splited_line = line.split()
                     ciel = splited_line[0]
                     Hz = float(splited_line[1])
+                    V = float(splited_line[2])
                     # prvemu stanovisku chyba prva merana dlzka (docasne bude -1)
+                    # a preto udaj o vyske zrkadla je na inom indexe
                     try:
                         vzd = float(splited_line[4])
+                        vyska_zrk = float(splited_line[5])
                     except:
                         vzd = -1
-                    meranie.append((ciel,Hz,vzd))
+                        vyska_zrk = float(splited_line[3])
+                    meranie.append((ciel,Hz,vzd, V, vyska_zrk))
 
                 stat_data['meranie'] = meranie
                 data_by_stanovisko.append(stat_data)
@@ -84,8 +95,8 @@ def correct_first_stat(measurements):
     z merania v druhej polohe.
     '''
     copied_distance = measurements[0]['meranie'][2][2]
-    target, Hz, _ = measurements[0]['meranie'][1]
-    new_entry = (target, Hz, copied_distance)
+    target, Hz, _, V, vys_zrk = measurements[0]['meranie'][1]
+    new_entry = (target, Hz, copied_distance, V, vys_zrk)
     correct_values = measurements[0]['meranie'][2:]
     corrected_measurement = [new_entry] + correct_values
     all_measures = measurements.copy()
@@ -119,15 +130,16 @@ def skupina_avg(skupina, stanovisko, cs):
                 [(ciel, Hz, vzd),...] spriemerovane smery z 2 poloh a 
                 zredukovane na nulovu orientaciu
     '''
-    smery = []
+    smery = [] # hz
     dlzky = []
     ciele = []
+    zenit_uhl = []
+    vysky_zrk = []
     last_idx = len(skupina) - 2
     # loop throught each target
     for i in range(0,len(skupina),2):
         name1 = skupina[i][0]
         name2 = skupina[i+1][0]
-
         if not name1 == name2:
             error_message = '''
             'Vyskytol sa problem v skupine cislo {} pre stanovisko {}. Priemerovana zamera 
@@ -138,18 +150,20 @@ def skupina_avg(skupina, stanovisko, cs):
         if i == last_idx:
             Hz_p2 = skupina[i][1]
             Hz_p1 = skupina[i+1][1]
+            V_p2 = skupina[i][3]
+            V_p1 = skupina[i+1][3]
         else:
             Hz_p1 = skupina[i][1]
             Hz_p2 = skupina[i+1][1]
-
-        Hz_p1 = in400(Hz_p1)
+            V_p1 = skupina[i][3]
+            V_p2 = skupina[i+1][3]
 
         dlzka1 =  skupina[i][2]
         dlzka2 =  skupina[i+1][2]
         dlzky.append(round((dlzka1 + dlzka2)/2,3))
-        # korigovana druha poloha
-        Hz_p2_cor = in400(Hz_p2 - 200)
 
+        Hz_p1 = in400(Hz_p1)
+        Hz_p2_cor = in400(Hz_p2 - 200)
         # osetrenie prechodu cez 0.0000
         if round(Hz_p1) == round(Hz_p2_cor):
             smer = (Hz_p1 + Hz_p2_cor)/2
@@ -157,14 +171,18 @@ def skupina_avg(skupina, stanovisko, cs):
             smer = (Hz_p1 + Hz_p2_cor + 400)/2
             smer = in400(smer)
 
+        zenit_uhl.append(round((400 + V_p1 - V_p2)/2, 4))
         smery.append(smer)
         ciele.append(skupina[i][0])
+
+        vys_zrk = skupina[i][4]
+        vysky_zrk.append(vys_zrk)
 
     # redukovane smery
     smery_red = [ round(in400(s-smery[0]),4) for s in smery ]
     measure_AVGed = []
     for i in range(int(len(skupina)/2)):
-        measure_AVGed.append((ciele[i], smery_red[i], dlzky[i]))
+        measure_AVGed.append((ciele[i], smery_red[i], dlzky[i], zenit_uhl[i], vysky_zrk[i]))
     
     return measure_AVGed
         
@@ -179,11 +197,14 @@ def AVG_tuples(*tuples):
     names = [ tup[0] for tup in tuples]
     Hz_sum = sum([ tup[1] for tup in tuples])
     vzd_sum = sum([ tup[2] for tup in tuples])
+    V_sum = sum([ tup[3] for tup in tuples])
+    vys_zrk = tuples[0][4]
     if len(set(names)) == 1:
         name = names[0]
         Hz = round((Hz_sum)/n_tuples, 4)
         vzd = round((vzd_sum)/n_tuples, 3)
-        tuple_AVG = (name, Hz, vzd)
+        V = round((V_sum)/n_tuples, 4)
+        tuple_AVG = (name, Hz, vzd, V, vys_zrk)
     else:
         raise ValueError('Rozne body sa nesmu priemerovat!!!')
     return tuple_AVG
@@ -235,6 +256,7 @@ def adjust_zostava(zostava):
     stanovisko = zostava['stanovisko']
     bod_spat = zostava['bod_spat']
     bod_vpred = zostava['bod_vpred']
+    vys_stroj = zostava['vys_stroj']
     # indices of bod_vpred's measurements
     vpred_idxs = [i for i, mer in enumerate(zostava['meranie']) if mer[0]==bod_vpred ]
     # koncove indexy kazdej skupiny (skupina konci druhym meranim bodu vpred)
@@ -284,7 +306,7 @@ def adjust_zostava(zostava):
         AVGed_two_groupes_vpred = AVGs_in_groups[0][-1]
         AVGed_two_groupes_vzad = AVGs_in_groups[0][0]
 
-    zostava_output['stanovisko'] = {'name': stanovisko}
+    zostava_output['stanovisko'] = {'name': stanovisko, 'vys_stroj': vys_stroj}
     zostava_output['bod_vpred'] = {'name': bod_vpred, 'data': AVGed_two_groupes_vpred}
     zostava_output['bod_spat'] = {'name': bod_spat, 'data': AVGed_two_groupes_vzad}
     body_stranou = [ point for point, *_ in zamery_stranou]
@@ -292,7 +314,7 @@ def adjust_zostava(zostava):
     return zostava_output
 
 
-def write_plx(file, zostavy):
+def write_plx(file, zostavy, vysk_uhly=False):
     '''
     Ulozi data do plx subor, co je vstupny format pre vypocet polygonu pre kokes.
 
@@ -302,13 +324,19 @@ def write_plx(file, zostavy):
             example: {'stanovisko': {'name': 'S3'}, 'stranou': {'name': [], 'data': []}, 
                     'bod_spat': {'name': 'S2', 'data': ('S2', 0.0, 2.885)}, 
                     'bod_vpred': {'name': 'O2', 'data': ('O2', 395.86, 4.457)}}
+    vysk_uhly: bool; Ak True, tak je pridany dalsi stlpec s vyskovymi uhlami a
+                zmeni sa hlavicka suboru plx. Vyuziva sa to pri vyskovom rieseni  
+                polygonu v Kokesi.
     '''
     # write to file
     with open(file, 'w', newline='') as plxfile:
         plxriter = csv.writer(plxfile, delimiter=' ',
                                 quoting=csv.QUOTE_MINIMAL)
         # first two rows
-        plxriter.writerow(['//', 'vysky=0', 'delky=0', 'zenit=-1', 'cnt_poc=1', 'cnt_kon=1'])
+        if vysk_uhly:
+            plxriter.writerow(['//', 'vysky=1', 'delky=0', 'zenit=-1', 'cnt_poc=1', 'cnt_kon=1'])
+        else:
+            plxriter.writerow(['//', 'vysky=0', 'delky=0', 'zenit=-1', 'cnt_poc=1', 'cnt_kon=1'])
         orientacia1 = zostavy[0]['bod_spat']['name']
         stanovisko1 = zostavy[0]['stanovisko']['name']
         plxriter.writerow(['smernik {}-{}'.format(stanovisko1, orientacia1)])
@@ -322,7 +350,12 @@ def write_plx(file, zostavy):
             # vzdialenost spat z dalsieho stanoviska (ta ista vzdialenost)
             next_vzd_spat = zostavy[i+1]['bod_spat']['data'][2]
             AVG_vzd = round((vzd_vpred + next_vzd_spat) / 2, 3)
-            plxriter.writerow([stanovisko, Hz_vpred, AVG_vzd])
+            if not vysk_uhly:
+                plxriter.writerow([stanovisko, Hz_vpred, AVG_vzd])
+            else:
+                v_uhol_vpred = round(100 - zost['bod_vpred']['data'][3], 4)
+                plxriter.writerow([stanovisko, Hz_vpred, AVG_vzd, v_uhol_vpred])
+
         # posledne stanovisko
         orientacia_last = zostavy[-1]['bod_vpred']['name']
         stanovisko_last = zostavy[-1]['stanovisko']['name']
@@ -362,22 +395,21 @@ def make_reductions(zostavy, H, o):
     '''
     zostavy_all = zostavy.copy()
     for i, zostava in enumerate(zostavy):
-        bod_vp, hz_vp, s_vp = zostava['bod_vpred']['data']
+        bod_vp, hz_vp, s_vp, V_vp, vys_zrk_vp = zostava['bod_vpred']['data']
         K = red_dlzok(s_vp, H, o)
-        zostavy_all[i]['bod_vpred']['data'] = (bod_vp, hz_vp, round(s_vp+K, 3))
+        zostavy_all[i]['bod_vpred']['data'] = (bod_vp, hz_vp, round(s_vp+K, 3), V_vp, vys_zrk_vp)
 
-        bod_vz, hz_vz, s_vz = zostava['bod_spat']['data']
+        bod_vz, hz_vz, s_vz, V_vz, vys_zrk_vz = zostava['bod_spat']['data']
         K = red_dlzok(s_vz, H, o)
-        zostavy_all[i]['bod_spat']['data'] = (bod_vz, hz_vz, round(s_vz+K, 3))
+        zostavy_all[i]['bod_spat']['data'] = (bod_vz, hz_vz, round(s_vz+K, 3), V_vz, vys_zrk_vz)
         data_stranou = zostava['stranou']['data']
         if len(data_stranou) > 0:
             data_stranou_corr = []
             for zamera in data_stranou:
-                bod, hz, s = zamera
+                bod, hz, s, V, vys_zrk = zamera
                 K = red_dlzok(s, H, o)
-                data_stranou_corr.append((bod, hz, round(s+K, 3)))
+                data_stranou_corr.append((bod, hz, round(s+K, 3), V, vys_zrk))
             zostavy_all[i]['stranou']['data'] = data_stranou_corr
-
     return zostavy_all
 
 
@@ -386,10 +418,11 @@ def write_body_stranou(file, zostavy):
     Do osobitneho suboru zapise spriemerovane uhly a dlzky pre body stranou
     '''
     with open(file, 'w', newline='') as obj:
-        datwriter = csv.writer(obj, delimiter=' ',
+        obj.write('Data pre body stranou\n')
+        datwriter = csv.writer(obj, delimiter=',',
                                 quoting=csv.QUOTE_MINIMAL)
-        datwriter.writerow(['Uhly pre body stranou'])
-        datwriter.writerow(['uhol_name', 'Hz(g)', 'vzd(m)'])
+        datwriter.writerow(['---------------------'])
+        datwriter.writerow(['vzad_stan_ciel', 'Hz(g)', 'vzd(m)', 'zenit(g)'])
         for zost in zostavy:
             bod_vzad = zost['bod_spat']['name']
             stanovisko = zost['stanovisko']['name']
@@ -397,8 +430,9 @@ def write_body_stranou(file, zostavy):
                 bod_stranou = zam_stran[0]
                 Hz_stranou = zam_stran[1]
                 vzd_stranou = zam_stran[2]
+                zenit_ang = zam_stran[3]
                 angle_mark = '{}-{}-{}'.format(bod_vzad, stanovisko, bod_stranou)
-                datwriter.writerow([angle_mark, Hz_stranou, vzd_stranou])
+                datwriter.writerow([angle_mark, Hz_stranou, vzd_stranou, zenit_ang])
 
 
 def check_names_bodvpred(zostavy):
@@ -426,7 +460,7 @@ def check_names_bodvpred(zostavy):
                 raise ValueError(error_message)
 
 
-def check_namse_stranou(zostavy):
+def check_names_stranou(zostavy):
     '''
     Kontrola, ci sa body stranou nenachadzaju na zaciatku alebo na konci meranej skupiny.
     Ci sa nachadzaju na konci celej zostavy riesi funkcia check_names_bodvpred (okrem poslednej zostavy, 
@@ -453,43 +487,172 @@ def check_namse_stranou(zostavy):
                 raise ValueError(error_message)
 
 
-def compute_measurements(file, H, o, dist_reduce=True):
+def elev_2points(ha, hb, alfa, s, mode='grad'):
+    '''
+    Vypocet prevysenia medzi bodmi AB: dH_ab = H_b - H_a
+
+    ha - vyska stroja na bode A
+    hb - vyska zrkadla na bode B
+    alfa - vyskovy uhol na stanovisku A
+    s - vodorovna dlzka A-B
+    mode - str; 'deg', 'rad', 'grad'; jednotky vstupneho uhlu alfa
+    '''
+    if mode == 'deg':
+        angle = math.radians(alfa)
+    elif mode == 'rad':
+        angle = alfa
+    elif mode == 'grad':
+        angle = alfa/400*2*math.pi
+    else:
+        raise ValueError('Uhlova jednotka {} je neznama'.format(mode))
+    dH_ab = ha + math.tan(angle) * s - hb
+    return dH_ab
+
+
+def calc_elevations(zostavy_AVGed):
+    '''
+    Vypocet prevyseni stanovisko-ciel a ich pridanie do vstupneho dict.
+    '''
+    zostavy_new = zostavy_AVGed.copy()
+    for i, zostava in enumerate(zostavy_AVGed):
+        name_stroj = zostava['stanovisko']['name']
+        name_ciel = zostava['bod_vpred']['name']
+        h_stroj = zostava['stanovisko']['vys_stroj']
+        vzd_vodor = zostava['bod_vpred']['data'][2]
+        h_zrk = zostava['bod_vpred']['data'][4]
+        zenit_zrk = zostava['bod_vpred']['data'][3]
+        vysk_uhol = 100 - zenit_zrk
+        elev = elev_2points(h_stroj, h_zrk, vysk_uhol, vzd_vodor, mode='grad')
+        zostavy_new[i]['bod_vpred']['prevysenie'] = round(elev,3)
+        elevations_str = []
+        for zamera in zostava['stranou']['data']:
+            h_zrk_str = zamera[4]
+            vysk_uhol_str = 100 - zamera[3]
+            vzd_vodor_str = zamera[2]
+            elev_str = elev_2points(h_stroj, h_zrk_str, vysk_uhol_str, vzd_vodor_str, mode='grad')
+            elevations_str.append(round(elev_str,3))
+        zostavy_new[i]['stranou']['prevysenie'] = elevations_str
+    return zostavy_new
+
+
+def elevs2hight(elevations, H1):
+    '''
+    Vypocet vysok stanovisk polygonoveho tahu
+    elevations: list s prevyseniami
+    H1: float; vyska prveho stanoviska
+    '''
+    hights = []
+    vyska = H1
+    for elevation in elevations:
+        vyska = vyska + elevation
+        hights.append(round(vyska,3))
+    return hights
+
+
+def calc_hights(zostavy_AVGed, H1, H2=None, oprav_vysky=True):
+    '''
+    Vypocet vysok bodov polygonu a bodov stranou.
+
+    OUTPUTS
+    zostavy_new: rovnaky tvar ako zostavy_AVGed, ale doplneny o vysky bodov
+    rozdiel: rozdiel vysky na poslednom stanovisku polygonu (znama - vypocitana) [m]
+    '''
+    # prevysenia a vysky pre vsetky body_vpred okrem posledneho t.j. poslednej orientacie.
+    elevs = [ i['bod_vpred']['prevysenie'] for i in zostavy_AVGed[:-1] ]
+    hights = elevs2hight(elevs, H1)
+    rozdiel = None
+    if H2 is not None:
+        # rozdiel vysok na poslednom stanovisku (znama - vypocitana)
+        rozdiel = round(H2 - hights[-1], 3)
+    if oprav_vysky and H2 is None:
+        raise ValueError('Nieje mozne opravit vysky stanovisk, ked nebola zadana vyska posledneho stanoviska')
+
+    if oprav_vysky:
+        oprava = rozdiel/len(elevs)
+        elevs_corrected = [ e+oprava for e in elevs]
+        hights = elevs2hight(elevs_corrected, H1)
+
+    # zapis vysok stanovisk a bodov stranou
+    zostavy_new = zostavy_AVGed.copy()
+    for i, zostava in enumerate(zostavy_AVGed):
+        if i == 0:
+            H_stan = H1
+        else:
+            H_stan = hights[i-1]
+        zostavy_new[i]['stanovisko']['vyska'] = H_stan
+        # urcenie vysok bodov stranou
+        vyska_str = []
+        for prev in zostava['stranou']['prevysenie']:
+            H_str = round(H_stan + prev, 3)
+            vyska_str.append(H_str)
+        zostavy_new[i]['stranou']['vyska'] = vyska_str
+    return zostavy_new, rozdiel
+
+
+def write_hights(file, zostavy, H_error, hights_fixed):
+    '''
+    H_error: None or float; rozdiel vypocitanej a znamej vysky na poslednom stanovisku.
+    hights_fixed: bool; boli/neboli opravene vysky na stanoviskach polygonu
+    '''     
+    with open(file, 'w', newline='') as obj:
+        if H_error is not None:
+            obj.write('Rozdiel vypocitanej a znamej vysky na poslednom stanovisku je: {}m\n'.format(H_error))
+        if hights_fixed:
+            obj.write('Vysky bodov polygonu BOLI opravene o tento rozdiel. \n')
+        else:
+            obj.write('Vysky bodov polygonu NEBOLI opravene o rozdiel vysok na poslednom stanovisku. \n')
+        obj.write('--------------------\n')
+        datwriter = csv.writer(obj, delimiter=',',
+                                quoting=csv.QUOTE_MINIMAL)
+        datwriter.writerow(['bod', 'H'])
+        for zost in zostavy:
+            stanovisko = zost['stanovisko']['name']
+            stan_hight = zost['stanovisko']['vyska']
+            datwriter.writerow([stanovisko, stan_hight])
+            for bod_stran, H_stran in zip(zost['stranou']['name'], zost['stranou']['vyska']):
+                datwriter.writerow([bod_stran, H_stran])
+
+
+def compute_measurements(file, H, o, dist_reduce=True, comp_hights=True, H1=None, H2=None,
+                        oprav_vysky=True, plx_vysuhl=False):
     '''
     file: str; zapisnik z merania (.txt)
-    H: float; priblizna nadmorska vyska polygonoveho tahu.
+    H: float; priblizna nadmorska vyska polygonoveho tahu (kvoli redukcii dlzok).
     o: float; oprava pre 100m dlzky odcitana z diagramu dlzkovych oprav (mm)
     dist_reduce: bool; opravit dlzky o redukcie
+    comp_hights: bool; Vypocet prevyseni a vysok bodov.
+    H1: None or flaot; Presna vyska prveho stanoviska polygonoveho tahu ak ide o vyskove riesenie.
+    H2: None or flaot; Presna vyska posledneho stanoviska polygonoveho tahu ak ide o vyskove riesenie.
+    oprav_vysky: bool; Ak True a ked je definovana H1 aj H2, tak sa rozdiel vysky na poslednom stanovisku 
+                    (definovana - vypocitana) rovnomerne rozdeli na vsetky stanoviska polygonu.
+    plx_vysuhl: bool; Ak True, tak subor plx bude obsahovat aj vyskove uhly, potrebne na vyskove spracovanie
+                    polygonu v Kokesi. Zmenena je aj hlavicka suboru plx oproti polohovemu rieseniu.
+
     '''
     file_base = os.path.basename(file)
-    # without extension
-    file_name = os.path.splitext(file_base)[0]
-
+    file_name = os.path.splitext(file_base)[0] # no ext.
     measures = get_measurements(file)
     measures = correct_first_stat(measures)
     check_names_bodvpred(measures)
-    check_namse_stranou(measures)
+    check_names_stranou(measures)
     # Priemerovanie zamer z dvoch najspolahlivejsich skupin.
     zostavy_AVGed = []
     for zostava in measures:
         zostava_AVGed = adjust_zostava(zostava)
         zostavy_AVGed.append(zostava_AVGed)
-
+    # redukcie dlzok
     if dist_reduce:
         zostavy_AVGed = make_reductions(zostavy_AVGed, H, o)
-
-    write_plx(file_name+'.plx', zostavy_AVGed)
+    # vypocet vysok
+    if comp_hights:
+        zostavy_AVGed = calc_elevations(zostavy_AVGed)
+        zostavy_AVGed, H_error = calc_hights(zostavy_AVGed, H1, H2=H2, oprav_vysky=oprav_vysky)
+        write_hights(file_name+'_vysky.csv', zostavy_AVGed, H_error=H_error, hights_fixed=oprav_vysky)
+    # write plx and body_stranou
+    write_plx(file_name+'.plx', zostavy_AVGed, vysk_uhly=plx_vysuhl)
     write_body_stranou(file_name+'_stranou.csv', zostavy_AVGed)
 
 
 
 if __name__ == '__main__':
-    compute_measurements(r'd:\Projects\POLYconverter\examples\example.txt', 500, -3)
-
-
-
-
-
-
-
-
-
+    compute_measurements(r'..\examples\example.txt', 348, -8, H1=348.96, H2=400)
