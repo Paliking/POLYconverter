@@ -85,6 +85,7 @@ Po pridani prikazu -H1 100, reprezentujuci vysku 100m na prvom stanovisku polygn
 ### Priklad5 (vyskove riesenie v Kokesi)
 Po pridani prikazu --plx_vysuhl budu do suboru example.plx pridane vyskove uhly, potrebne na vyskove
 spracovanie polygonoveho tahu v Kokesi. Hlavicka suboru bude tiez zmenena.
+Tato funkcia je len v experimentalnej faze, pretoze vyskovy vypocet v Kokesi nebol uspesne vykonany.
 ```
 > POLYconverter.exe examples/example.txt 500 -3 --plx_vysuhl
 ```
