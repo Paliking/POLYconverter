@@ -2,6 +2,7 @@
 import csv
 import os
 import math
+import ZapWriter
 
 def get_blocks(seq):
     '''
@@ -651,6 +652,7 @@ def compute_measurements(file, H, o, dist_reduce=True, comp_hights=True, H1=None
     # write plx and body_stranou
     write_plx(file_name+'.plx', zostavy_AVGed, vysk_uhly=plx_vysuhl)
     write_body_stranou(file_name+'_stranou.csv', zostavy_AVGed)
+    ZapWriter.write_zap(file_name+'.ZAP', zostavy_AVGed)
 
 
 
