@@ -1,5 +1,5 @@
 # POLYconverter
-Konvertor zapisnika z merania polygonoveho tahu na format .plx pre spracovanie v Kokesi 
+Konvertor zapisnika z merania polygonoveho tahu na formaty .plx a .ZAP pre spracovanie v Kokesi 
 
 ### Postup merania polygonoveho tahu
  - dodrzanie postupu merania polygonoveho tahu podla examples/Postup_merania.docx
@@ -10,7 +10,7 @@ Konvertor zapisnika z merania polygonoveho tahu na format .plx pre spracovanie v
  - automaticke "vystriedenie" zapisnika z merania polygonoveho tahu
  - pri merani viac ako dvoch skupin sa spriemeruju len dve "najblizsie" skupiny
  - moznost opravy meranych dlzok o redukciu z nadmorskej vysky a zo skreslenia pouzitej projekcie
- - priprava suboru vo formate .plx pre spracovanie polygonu v programe KOKES
+ - priprava suborov vo formate .plx a .ZAP pre spracovanie polygonu v programe KOKES
  - vypocet vysok bodov polygonu a bodov meranych stranou
 
 ### Options
@@ -46,7 +46,7 @@ a koeficientom -3 odcitanom z diagramu dlzkovych oprav examples/Diagram_dlzkoveh
 ```
 > POLYconverter.exe examples/example.txt 500 -3
 ```
-Vystup su dva subory
+Vystup su tri subory
  * **example.plx** 
 	* subor na spracovanie polygonoveho tahu v programe KOKES
 	* pred nacitanim do KOKESU je potrebne vypocitat smerniky zaciatocnych a koncovych bodov 
@@ -55,6 +55,10 @@ Vystup su dva subory
  * **example_stranou.csv**
 	* zoznam bodov stranou s vyslednymi Hz uhlami, zenit. uhlami, dlzkami.
 	* napr. oznacenie 701-702-150 znamena uhol medzi bodmi 701-150 zo stanoviska 702 (na bod 701 je nulovy smer)
+ * **example.ZAP**
+    * alternativny subor na spracovanie polygonoveho tahu v programe KOKES 
+	* oproti .plx suboru obsahuje viac informacii
+	a je ho mozne vyuzit aj na 3D riesenie polygonoveho tahu
 
 ### Priklad2 (polohove riesenie bez redukcii dlzok)
 Konvertovanie zapisnika example.txt bez vyuzitia redukcie dlzok. 
@@ -85,7 +89,8 @@ Po pridani prikazu -H1 100, reprezentujuci vysku 100m na prvom stanovisku polygn
 ### Priklad5 (vyskove riesenie v Kokesi)
 Po pridani prikazu --plx_vysuhl budu do suboru example.plx pridane vyskove uhly, potrebne na vyskove
 spracovanie polygonoveho tahu v Kokesi. Hlavicka suboru bude tiez zmenena.
-Tato funkcia je len v experimentalnej faze, pretoze vyskovy vypocet v Kokesi nebol uspesne vykonany.
+Tato funkcia je len v experimentalnej faze, pretoze vyskovy vypocet v Kokesi nebol uspesne vykonany
+pomocou tejto funkcie.
 ```
 > POLYconverter.exe examples/example.txt 500 -3 --plx_vysuhl
 ```
