@@ -59,6 +59,7 @@ Vystup su tri subory
     * alternativny subor na spracovanie polygonoveho tahu v programe KOKES 
 	* oproti .plx suboru obsahuje viac informacii
 	a je ho mozne vyuzit aj na 3D riesenie polygonoveho tahu
+	* prikladom .ZAP suboru je examples/example.ZAP
 
 ### Priklad2 (polohove riesenie bez redukcii dlzok)
 Konvertovanie zapisnika example.txt bez vyuzitia redukcie dlzok. 
