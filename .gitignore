@@ -6,4 +6,6 @@ kokes_in
 data
 *.csv
 /*.plx
+/*.ZAP
 POLYconverter/*.plx
+POLYconverter/*.ZAP
